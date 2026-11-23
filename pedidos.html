@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pedidos recibidos · Tamales</title>
+<style>
+  :root{
+    --fondo:#FBF6EE; --tarjeta:#FFFFFF; --texto:#33302A; --suave:#7A7264;
+    --borde:#E4DCCB; --acento:#B4552D; --acento-suave:#F6E3D7;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--fondo); color:var(--texto); padding:20px 14px 48px;}
+  .contenedor{max-width:640px; margin:0 auto;}
+  h1{font-size:26px; text-align:center; margin-bottom:4px;}
+  .subtitulo{text-align:center; color:var(--suave); margin-bottom:20px; font-size:14px;}
+  .resumen{background:var(--tarjeta); border:1px solid var(--borde); border-radius:14px; padding:16px 18px; margin-bottom:16px;}
+  .resumen h2{font-size:16px; margin-bottom:10px;}
+  .resumen .grid{display:grid; grid-template-columns:1fr 1fr; gap:6px 18px; font-size:15px;}
+  .resumen .grid div{display:flex; justify-content:space-between;}
+  .resumen .gran-total{margin-top:12px; padding-top:10px; border-top:1px solid var(--borde); display:flex; justify-content:space-between; font-weight:700; font-size:17px;}
+  .pedido{background:var(--tarjeta); border:1px solid var(--borde); border-radius:14px; padding:14px 18px; margin-bottom:12px;}
+  .pedido .cabecera{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;}
+  .pedido .familia{font-weight:700; font-size:17px;}
+  .pedido .hora{color:var(--suave); font-size:13px;}
+  .pedido ul{list-style:none; font-size:15px;}
+  .pedido ul li{display:flex; justify-content:space-between; padding:2px 0;}
+  .pedido .total{margin-top:8px; padding-top:8px; border-top:1px solid var(--borde); display:flex; justify-content:space-between; font-weight:700;}
+  .vacio{text-align:center; color:var(--suave); padding:28px 0; font-size:15px;}
+  .aviso-config{background:#FFF3CD; border:1px solid #E3C878; color:#6B5410; border-radius:10px; padding:12px; font-size:14px; margin-bottom:16px; display:none;}
+</style>
+</head>
+<body>
+<div class="contenedor">
+  <h1>Pedidos recibidos</h1>
+  <p class="subtitulo">Esta lista se actualiza sola cada 10 segundos.</p>
+
+  <div class="aviso-config" id="avisoConfig">Esta página todavía no está conectada. Falta un dato de configuración.</div>
+
+  <div class="resumen">
+    <h2>Totales por sabor</h2>
+    <div class="grid" id="resumenSabores"></div>
+    <div class="gran-total"><span>Total general</span><span id="granTotal">0 tamales</span></div>
+  </div>
+
+  <div id="listaPedidos"><p class="vacio">Cargando pedidos...</p></div>
+</div>
+
+<script src="supabase-config.js"></script>
+<script>
+const SABORES = [
+  { id:"carne",      nombre:"Carne" },
+  { id:"pollo",      nombre:"Pollo" },
+  { id:"cerdo",      nombre:"Cerdo" },
+  { id:"carnePollo", nombre:"Carne y pollo" },
+  { id:"carneCerdo", nombre:"Carne y cerdo" },
+  { id:"polloCerdo", nombre:"Pollo y cerdo" }
+];
+const nombreSabor = {};
+SABORES.forEach(s => { nombreSabor[s.id] = s.nombre; });
+
+document.getElementById("resumenSabores").innerHTML =
+  SABORES.map(s => '<div><span>' + s.nombre + '</span><b id="tot-' + s.id + '">0</b></div>').join("");
+
+const configurado = window.SB_ANON_KEY && window.SB_ANON_KEY !== "PEGA_LA_LLAVE_ANON";
+if(!configurado){
+  document.getElementById("avisoConfig").style.display = "block";
+  document.getElementById("listaPedidos").innerHTML = '<p class="vacio">Sin conexión todavía.</p>';
+} else {
+  async function cargar(){
+    try{
+      const resp = await fetch(window.SB_URL + "/rest/v1/tamales_pedidos?select=*&order=creado_en.desc&limit=200", {
+        headers: { "apikey": window.SB_ANON_KEY, "Authorization": "Bearer " + window.SB_ANON_KEY }
+      });
+      if(!resp.ok) throw new Error("HTTP " + resp.status);
+      const pedidos = await resp.json();
+
+      const totales = {};
+      SABORES.forEach(s => { totales[s.id] = 0; });
+      let granTotal = 0;
+      const lista = document.getElementById("listaPedidos");
+
+      if(pedidos.length === 0){
+        lista.innerHTML = '<p class="vacio">Todavía no hay pedidos.</p>';
+      } else {
+        lista.innerHTML = "";
+        pedidos.forEach(p => {
+          const items = p.items || {};
+          Object.keys(items).forEach(id => { if(totales[id] !== undefined) totales[id] += items[id]; });
+          granTotal += p.total || 0;
+
+          const fecha = p.creado_en ? new Date(p.creado_en) : null;
+          const hora = fecha ? fecha.toLocaleString("es", { day:"numeric", month:"short", hour:"numeric", minute:"2-digit" }) : "";
+          const filas = Object.keys(items)
+            .filter(id => items[id] > 0)
+            .map(id => '<li><span>' + (nombreSabor[id] || id) + '</span><b>' + items[id] + '</b></li>').join("");
+
+          const div = document.createElement("div");
+          div.className = "pedido";
+          div.innerHTML =
+            '<div class="cabecera"><span class="familia"></span><span class="hora">' + hora + '</span></div>' +
+            '<ul>' + filas + '</ul>' +
+            '<div class="total"><span>Total</span><span>' + (p.total || 0) + ' tamales</span></div>';
+          div.querySelector(".familia").textContent = p.familia || "Sin nombre";
+          lista.appendChild(div);
+        });
+      }
+
+      SABORES.forEach(s => { document.getElementById("tot-"+s.id).textContent = totales[s.id]; });
+      document.getElementById("granTotal").textContent = granTotal + " tamales";
+    }catch(err){
+      document.getElementById("listaPedidos").innerHTML = '<p class="vacio">No se pudieron cargar los pedidos. Revisa la conexión.</p>';
+    }
+  }
+  cargar();
+  setInterval(cargar, 10000);
+}
+</script>
+</body>
+</html>
