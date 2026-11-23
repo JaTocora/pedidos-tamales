@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pedido de tamales</title>
+<style>
+  :root{
+    --fondo:#FBF6EE; --tarjeta:#FFFFFF; --texto:#33302A; --suave:#7A7264;
+    --borde:#E4DCCB; --acento:#B4552D; --acento-suave:#F6E3D7; --verde:#3E7C4F;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--fondo); color:var(--texto); padding:20px 14px 48px;}
+  .contenedor{max-width:520px; margin:0 auto;}
+  h1{font-size:28px; text-align:center; margin-bottom:4px;}
+  .subtitulo{text-align:center; color:var(--suave); margin-bottom:22px; font-size:15px;}
+  .tarjeta{background:var(--tarjeta); border:1px solid var(--borde); border-radius:14px; padding:18px; margin-bottom:16px;}
+  label.etiqueta{display:block; font-weight:600; margin-bottom:8px; font-size:15px;}
+  input[type="text"]{width:100%; font-size:17px; padding:12px; border:1px solid var(--borde); border-radius:10px; background:#FFFDF9;}
+  input[type="text"]:focus{outline:2px solid var(--acento); outline-offset:1px;}
+  .fila{display:flex; align-items:center; justify-content:space-between; padding:13px 2px; border-bottom:1px solid var(--borde);}
+  .fila:last-child{border-bottom:none;}
+  .sabor{font-size:16px; font-weight:500;}
+  .contador{display:flex; align-items:center; gap:10px;}
+  .contador button{width:40px; height:40px; border-radius:50%; border:1px solid var(--borde); background:var(--acento-suave); color:var(--acento); font-size:22px; font-weight:700; cursor:pointer; line-height:1;}
+  .contador button:active{transform:scale(0.94);}
+  .contador input{width:52px; text-align:center; font-size:17px; font-weight:600; padding:8px 2px; border:1px solid var(--borde); border-radius:8px; background:#FFFDF9;}
+  .total{display:flex; justify-content:space-between; font-size:17px; font-weight:700; padding-top:6px;}
+  button.enviar{width:100%; padding:15px; font-size:18px; font-weight:700; color:#fff; background:var(--acento); border:none; border-radius:12px; cursor:pointer;}
+  button.enviar:disabled{opacity:0.55; cursor:default;}
+  .mensaje{margin-top:14px; text-align:center; font-size:15px; min-height:20px;}
+  .mensaje.error{color:#B3261E;}
+  .mensaje.ok{color:var(--verde); font-weight:600;}
+  .aviso-config{background:#FFF3CD; border:1px solid #E3C878; color:#6B5410; border-radius:10px; padding:12px; font-size:14px; margin-bottom:16px; display:none;}
+</style>
+</head>
+<body>
+<div class="contenedor">
+  <h1>Pedido de tamales</h1>
+  <p class="subtitulo">Escribe el nombre de tu familia y elige cuántos tamales quieres de cada sabor.</p>
+
+  <div class="aviso-config" id="avisoConfig">Esta página todavía no está conectada. Falta un dato de configuración.</div>
+
+  <div class="tarjeta">
+    <label class="etiqueta" for="familia">Nombre de la familia</label>
+    <input type="text" id="familia" placeholder="Ejemplo: Familia Pérez" autocomplete="family-name">
+  </div>
+
+  <div class="tarjeta" id="listaSabores"></div>
+
+  <div class="tarjeta">
+    <div class="total"><span>Total de tamales</span><span id="totalTamales">0</span></div>
+  </div>
+
+  <button class="enviar" id="btnEnviar">Enviar pedido</button>
+  <p class="mensaje" id="mensaje"></p>
+</div>
+
+<script src="supabase-config.js"></script>
+<script>
+const SABORES = [
+  { id:"carne",      nombre:"Carne" },
+  { id:"pollo",      nombre:"Pollo" },
+  { id:"cerdo",      nombre:"Cerdo" },
+  { id:"carnePollo", nombre:"Carne y pollo" },
+  { id:"carneCerdo", nombre:"Carne y cerdo" },
+  { id:"polloCerdo", nombre:"Pollo y cerdo" }
+];
+
+const cantidades = {};
+const lista = document.getElementById("listaSabores");
+
+SABORES.forEach(s => {
+  cantidades[s.id] = 0;
+  const fila = document.createElement("div");
+  fila.className = "fila";
+  fila.innerHTML =
+    '<span class="sabor">' + s.nombre + '</span>' +
+    '<span class="contador">' +
+      '<button type="button" data-accion="menos" data-id="' + s.id + '" aria-label="Quitar uno">−</button>' +
+      '<input type="number" min="0" max="999" value="0" id="cant-' + s.id + '" inputmode="numeric">' +
+      '<button type="button" data-accion="mas" data-id="' + s.id + '" aria-label="Agregar uno">+</button>' +
+    '</span>';
+  lista.appendChild(fila);
+});
+
+function actualizarTotal(){
+  const total = Object.values(cantidades).reduce((a,b)=>a+b,0);
+  document.getElementById("totalTamales").textContent = total;
+  return total;
+}
+
+lista.addEventListener("click", e => {
+  const btn = e.target.closest("button[data-accion]");
+  if(!btn) return;
+  const id = btn.dataset.id;
+  cantidades[id] = Math.max(0, Math.min(999, cantidades[id] + (btn.dataset.accion === "mas" ? 1 : -1)));
+  document.getElementById("cant-"+id).value = cantidades[id];
+  actualizarTotal();
+});
+
+lista.addEventListener("input", e => {
+  if(e.target.tagName !== "INPUT") return;
+  const id = e.target.id.replace("cant-","");
+  const v = parseInt(e.target.value, 10);
+  cantidades[id] = isNaN(v) ? 0 : Math.max(0, Math.min(999, v));
+  actualizarTotal();
+});
+
+const configurado = window.SB_ANON_KEY && window.SB_ANON_KEY !== "PEGA_LA_LLAVE_ANON";
+if(!configurado) document.getElementById("avisoConfig").style.display = "block";
+
+const btn = document.getElementById("btnEnviar");
+const mensaje = document.getElementById("mensaje");
+
+btn.addEventListener("click", async () => {
+  const familia = document.getElementById("familia").value.trim();
+  const total = actualizarTotal();
+  mensaje.className = "mensaje";
+  if(!configurado){ mensaje.textContent = "La página aún no está conectada."; mensaje.classList.add("error"); return; }
+  if(!familia){ mensaje.textContent = "Escribe el nombre de la familia."; mensaje.classList.add("error"); return; }
+  if(total === 0){ mensaje.textContent = "Elige al menos un tamal."; mensaje.classList.add("error"); return; }
+
+  btn.disabled = true;
+  btn.textContent = "Enviando...";
+  try{
+    const items = {};
+    SABORES.forEach(s => { if(cantidades[s.id] > 0) items[s.id] = cantidades[s.id]; });
+    const resp = await fetch(window.SB_URL + "/rest/v1/tamales_pedidos", {
+      method: "POST",
+      headers: {
+        "apikey": window.SB_ANON_KEY,
+        "Authorization": "Bearer " + window.SB_ANON_KEY,
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal"
+      },
+      body: JSON.stringify({ familia: familia, items: items, total: total })
+    });
+    if(!resp.ok) throw new Error("HTTP " + resp.status);
+    mensaje.textContent = "Pedido recibido: " + total + " tamales para " + familia + ". Gracias.";
+    mensaje.classList.add("ok");
+    btn.textContent = "Pedido enviado";
+    document.getElementById("familia").value = "";
+    SABORES.forEach(s => { cantidades[s.id] = 0; document.getElementById("cant-"+s.id).value = 0; });
+    actualizarTotal();
+    setTimeout(()=>{ btn.disabled = false; btn.textContent = "Enviar pedido"; }, 2500);
+  }catch(err){
+    mensaje.textContent = "No se pudo enviar el pedido. Revisa tu conexión e inténtalo de nuevo.";
+    mensaje.classList.add("error");
+    btn.disabled = false;
+    btn.textContent = "Enviar pedido";
+  }
+});
+</script>
+</body>
+</html>
